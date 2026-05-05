@@ -1,6 +1,9 @@
 #ifndef _VALVE_H
 #define _VALVE_H
 
+constexpr int MAX_VALVES = 4;
+constexpr int N_VALVES = 4;
+
 struct Valve {
   int pin;
   bool is_on = false;
@@ -9,28 +12,29 @@ struct Valve {
   unsigned long lastswitch;
 };
 
-Valve *valves = nullptr;
-unsigned int n_valves = 0;
+void addValve(Valve valves[], unsigned int i_valve, int pin, bool is_on, int pwm, unsigned long period) {
+  if (i_valve >= MAX_VALVES) return;
 
-void addValve(int pin, bool is_on, int pwm, unsigned long period) {
-  n_valves++;
+  Valve &v = valves[i_valve];
 
-  // (RE)ALLOCATE MEMORY
-  valves = (Valve *)realloc(valves, n_valves * sizeof(Valve));
-  // if (valves != 0) {
-  //   valves = (Valve *)realloc(valves, n_valves * sizeof(Valve));
-  // } else {
-  //   valves = (Valve *)malloc(n_valves * sizeof(Valve));
-  // }
+  pinMode(pin, OUTPUT);
+  delay(10);
+  digitalWrite(pin, LOW);
 
-  valves[n_valves - 1].pin = pin;
-  valves[n_valves - 1].is_on = is_on;
-  valves[n_valves - 1].pwm = pwm;
-  valves[n_valves - 1].period = period;
-  valves[n_valves - 1].lastswitch = millis();
+  v.pin = pin;
+  v.is_on = is_on;
+  v.pwm = pwm;
+  v.period = period;
+  v.lastswitch = millis();
 }
 
-int findValve(int pin) {
+void initValves(Valve valves[], unsigned int n_valves, unsigned int pins[], int pwm = 50, unsigned long period = 10000) {
+  for (int i = 0; i < n_valves; i++) {
+    addValve(valves, i, pins[i], false, pwm, period);
+  }
+}
+
+int findValve(Valve valves[], unsigned int n_valves, int pin) {
   for (int i = 0; i < n_valves; i++) {
     if (valves[i].pin == pin) {
       return i;
@@ -39,7 +43,7 @@ int findValve(int pin) {
   return -1;
 }
 
-void updateState() {
+void updateState(Valve valves[], unsigned int n_valves) {
   // PWM Logic
   unsigned long now = millis();
   long elapsed;

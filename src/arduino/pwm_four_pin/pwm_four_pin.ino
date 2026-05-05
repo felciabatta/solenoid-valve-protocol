@@ -4,6 +4,9 @@
 // DECLARE GLOBAL VARIABLES
 int pin_l;
 char received_data[25];  // Buffer to store incoming serial data
+int PIN_VALVES[4] = {2, 3, 4, 5};
+
+Valve valves[MAX_VALVES];
 
 void setup() {
   // INITIALISE SERIAL
@@ -14,12 +17,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   // INITIALISE VALVES
-  for (int id_pin = 2; id_pin <= 5; id_pin++) {
-    pinMode(id_pin, OUTPUT);
-    delay(10);
-    digitalWrite(id_pin, LOW);
-    addValve(id_pin, false, 50, 10000);
-  }
+  initValves(valves, N_VALVES, PIN_VALVES);
 
   digitalWrite(LED_BUILTIN, HIGH);
 }
@@ -40,7 +38,7 @@ void loop() {
         return;
       }
 
-      int i = findValve(pin_l);
+      int i = findValve(valves, N_VALVES, pin_l);
       if (i >= 0) {
         valves[i].pin = pin_l;
         valves[i].is_on = atoi(received_data + 7);
@@ -51,5 +49,5 @@ void loop() {
       }
     }
   }
-  updateState();
+  updateState(valves, N_VALVES);
 }
