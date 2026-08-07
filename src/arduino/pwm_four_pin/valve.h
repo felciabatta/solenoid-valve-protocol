@@ -9,6 +9,7 @@ struct Valve {
   bool is_active = false;
   int pwm = 50;
   unsigned long period = 10000;
+  unsigned long pulse_window;
   unsigned long lastswitch;
 };
 
@@ -25,6 +26,7 @@ void addValve(Valve valves[], unsigned int i_valve, int pin, bool is_active, int
   v.is_active = is_active;
   v.pwm = pwm;
   v.period = period;
+  v.pulse_window = (v.period * v.pwm) / 100.0;
   v.lastswitch = millis();
 }
 
@@ -89,6 +91,7 @@ void updateState(char data_received[], Valve valves[], unsigned int n_valves, un
     v.is_active = atoi(data_received + 7);
     v.pwm = atoi(data_received + 9);
     v.period = atoi(data_received + 13);
+    v.pulse_window = (v.period * v.pwm) / 100.0;
 
     printValveStatus(v, i_valve);
   }
@@ -103,12 +106,14 @@ void updateActuator(Valve valves[], unsigned int n_valves) {
   for (int i = 0; i < n_valves; i++) {
     Valve &v = valves[i];
     unsigned long elapsed = now - v.lastswitch;
-    if ((v.is_active && elapsed > v.period) || !v.is_active) {
+    bool exceeded_period = v.is_active && elapsed > v.period;
+    bool within_pulse_window = v.is_active && elapsed < v.pulse_window;
+    if (exceeded_period || !v.is_active) {
       v.lastswitch = now;
-    } else if (v.is_active && elapsed < (v.period * v.pwm) / 100) {
-      digitalWrite(v.pin, HIGH);
+    } else if (within_pulse_window) {
+      digitalWrite(v.pin, HIGH);  // far-side inlet is open (non-normal)
     } else {
-      digitalWrite(v.pin, LOW);
+      digitalWrite(v.pin, LOW);  // pin-side inlet is open (normal)
     }
   }
 }
