@@ -85,15 +85,16 @@ void updateState(char data_received[], Valve valves[], unsigned int n_valves, un
       return;
     }
 
-    int i_valve = findValve(valves, n_valves, pin_received);
-    if (i_valve < 0) { return; }
-    Valve &v = valves[i_valve];
+    int idx_valve = findValve(valves, n_valves, pin_received);
+    if (idx_valve < 0) { return; }
+
+    Valve &v = valves[idx_valve];
     v.is_active = atoi(data_received + 7);
     v.pwm = atoi(data_received + 9);
     v.period = atoi(data_received + 13);
     v.pulse_window = (v.period * v.pwm) / 100.0;
 
-    printValveStatus(v, i_valve);
+    printValveStatus(v, idx_valve);
   }
 }
 

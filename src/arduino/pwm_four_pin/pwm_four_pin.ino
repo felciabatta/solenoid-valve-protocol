@@ -4,7 +4,7 @@
 // DECLARE GLOBAL VARIABLES
 constexpr unsigned int BUFFER_LENGTH = 25;
 char data_received[BUFFER_LENGTH];  // Buffer to store incoming serial data
-int PIN_VALVES[4] = { 2, 3, 4, 5 };
+unsigned int PIN_VALVES[4] = { 2, 3, 4, 5 };
 
 Valve valves[MAX_VALVES];
 
