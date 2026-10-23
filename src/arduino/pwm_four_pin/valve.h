@@ -1,56 +1,91 @@
 #ifndef _VALVE_H
 #define _VALVE_H
 
-constexpr int MAX_VALVES = 4;
-constexpr int N_VALVES = 4;
+#include "types.h"
+
+constexpr size_t N_VALVES = 4;
+constexpr ValveID VALVEID_MIN = 1;
+constexpr ValveID VALVEID_MAX = N_VALVES;
+constexpr pin_size_t VALVEPIN_MIN = 2;
+constexpr pin_size_t VALVEPIN_MAX = 5;
+constexpr DutyCycle DUTY_OPEN = 100;
+constexpr DutyCycle DUTY_CLOSED = 0;
+constexpr DutyCycle DUTY_DEFAULT = 0;
+constexpr TimeMillis PERIOD_DEFAULT = 1000;
+constexpr char NULL_CHR = '\0';
 
 struct Valve {
-  int pin;
-  bool is_active = false;
-  int pwm = 50;
-  unsigned long period = 10000;
-  unsigned long pulse_window;
-  unsigned long lastswitch;
+  ValveID id;
+  pin_size_t pin;
+  OnOff enable = false;
+  DutyCycle duty_cycle = DUTY_DEFAULT;
+  TimeMillis period = PERIOD_DEFAULT;
+  TimeMillis pulse_window;
+  TimeMillis period_start;
 };
 
-void addValve(Valve valves[], unsigned int i_valve, int pin, bool is_active, int pwm, unsigned long period) {
-  if (i_valve >= MAX_VALVES) return;
+void initValve(Valve valves[], ValveID id_valve, pin_size_t pin, DutyCycle duty_cycle, TimeMillis period) {
+  if (id_valve < VALVEID_MIN || id_valve > VALVEID_MAX) return;
 
-  Valve &v = valves[i_valve];
+  Valve &v = valves[id_valve - VALVEID_MIN];
 
   pinMode(pin, OUTPUT);
   delay(10);
   digitalWrite(pin, LOW);
 
+  v.id = id_valve;
   v.pin = pin;
-  v.is_active = is_active;
-  v.pwm = pwm;
+  v.enable = false;
+  v.duty_cycle = duty_cycle;
   v.period = period;
-  v.pulse_window = (v.period * v.pwm) / 100.0;
-  v.lastswitch = millis();
+  v.pulse_window = (v.period * v.duty_cycle) / 100.0;
+  v.period_start = millis();
 }
 
-void initValves(Valve valves[], unsigned int n_valves, unsigned int pins[], int pwm = 50, unsigned long period = 10000) {
-  for (int i = 0; i < n_valves; i++) {
-    addValve(valves, i, pins[i], false, pwm, period);
+void initValves(Valve valves[], size_t n_valves, pin_size_t pins[], DutyCycle duty_cycle = DUTY_DEFAULT, TimeMillis period = PERIOD_DEFAULT) {
+  for (size_t idx = 0; idx < n_valves; idx++) {
+    initValve(valves, idx, pins[idx], duty_cycle, period);
   }
 }
 
-int findValve(Valve valves[], unsigned int n_valves, int pin) {
-  for (int i = 0; i < n_valves; i++) {
-    if (valves[i].pin == pin) { return i; }
+int valvePin2Index(Valve valves[], size_t n_valves, pin_size_t pin) {
+  for (size_t idx = 0; idx < n_valves; idx++) {
+    if (valves[idx].pin == pin) { return idx; }
   }
   return -1;
 }
 
-void printValveStatus(Valve v, int i_valve) {
+int valveID2Index(Valve valves[], size_t n_valves, ValveID id) {
+  for (size_t idx = 0; idx < n_valves; idx++) {
+    if (valves[idx].id == id) { return idx; }
+  }
+  return -1;
+}
+
+int buffer2ValveIndex(Valve valves[], size_t n_valves, char data_buffer[]) {
+  // EXTRACT ID AND IDX
+  pin_size_t id_received = atoi(data_buffer + 3);
+  int idx_valve = valveID2Index(valves, n_valves, id_received);
+
+  // VALIDATE ID
+  if (idx_valve < 0) {
+    Serial.print("Invalid ID = ");
+    Serial.print(id_received);
+    Serial.println("! Must be 1, 2, 3 or 4.");
+    Serial.println();
+  }
+
+  return idx_valve;
+}
+
+void printValveStatus(Valve v) {
   Serial.print("[Setting Valve ");
-  Serial.print(i_valve + 1);
+  Serial.print(v.id);
   Serial.println("]");
   Serial.println("—————————————————");
 
   Serial.print("-    PWM: ");
-  Serial.print(v.pwm);
+  Serial.print(v.duty_cycle);
   Serial.println(" %");
 
   Serial.print("- Period: ");
@@ -58,64 +93,79 @@ void printValveStatus(Valve v, int i_valve) {
   Serial.println(" ms");
 
   Serial.print("- Active: ");
-  Serial.println(v.is_active ? "true" : "false");
+  Serial.println(v.enable ? "true" : "false");
   Serial.println("—————————————————");
   Serial.println();
 }
 
-void updateState(char data_received[], Valve valves[], unsigned int n_valves, unsigned int buffer_length) {
-  if (Serial.available() <= 0) { return; }
-
-  int bytes_read = Serial.readBytesUntil(';', data_received, buffer_length - 1);
-  data_received[bytes_read] = '\0';  // Ensure null termination
+void updateBuffer(char data_buffer[], size_t buffer_length) {
+  int bytes_read = Serial.readBytesUntil(';', data_buffer, buffer_length - 1);
+  data_buffer[bytes_read] = NULL_CHR;  // Ensure null termination
   Serial.print("[Received Data] \"");
-  Serial.print(data_received);
+  Serial.print(data_buffer);
   Serial.println("\"");
+}
 
-  // Look for "PWM" in the received string
-  if (strncmp(data_received, "PWM", 3) == 0) {
-    int pin_received = atoi(data_received + 3);  // Extract pin number
+// parseCommand
 
-    // ENSURE VALID PIN
-    if (pin_received < 2 || pin_received > 5) {
-      Serial.print("Invalid pin = ");
-      Serial.print(pin_received);
-      Serial.println("! Must be 2, 3, 4 or 5.");
-      Serial.println();
-      return;
-    }
+void updateState(Valve &v, OnOff enable, DutyCycle D, TimeMillis T) {
+  v.enable = enable;
+  v.duty_cycle = D;
+  v.period = T;
+  // window where valve is powered on
+  v.pulse_window = (v.period * v.duty_cycle) / 100.0;
+  printValveStatus(v);
+}
 
-    int idx_valve = findValve(valves, n_valves, pin_received);
-    if (idx_valve < 0) { return; }
+void updateState(char data_buffer[], Valve valves[], size_t n_valves) {
+  // Look for "PWM" in buffer
+  if (strncmp(data_buffer, "PWM", 3) != 0) { return; }
 
-    Valve &v = valves[idx_valve];
-    v.is_active = atoi(data_received + 7);
-    v.pwm = atoi(data_received + 9);
-    v.period = atoi(data_received + 13);
-    v.pulse_window = (v.period * v.pwm) / 100.0;
+  int idx_valve = buffer2ValveIndex(valves, n_valves, data_buffer);
+  if (idx_valve < 0) { return; }
 
-    printValveStatus(v, idx_valve);
-  }
+  OnOff enable = atoi(data_buffer + 7);
+  DutyCycle duty_cycle = atoi(data_buffer + 9);
+  TimeMillis period = atoi(data_buffer + 13);
+
+  updateState(valves[idx_valve], enable, duty_cycle, period);
+}
+
+void updateState(char data_buffer[], Valve valves[], size_t n_valves, size_t buffer_length){
+  if (Serial.available() <= 0) { return; }
+  updateBuffer(data_buffer, buffer_length);
+  updateState(data_buffer, valves, n_valves);
 }
 
 /*
   PWM Logic
 */
-void updateActuator(Valve valves[], unsigned int n_valves) {
-  unsigned long now = millis();
+void updateActuator(Valve &v, TimeMillis now) {
+  TimeMillis elapsed = now - v.period_start;
+  bool exceeded_period = v.enable && elapsed > v.period;
+  bool within_pulse_window = v.enable && elapsed < v.pulse_window;
 
-  for (int i = 0; i < n_valves; i++) {
-    Valve &v = valves[i];
-    unsigned long elapsed = now - v.lastswitch;
-    bool exceeded_period = v.is_active && elapsed > v.period;
-    bool within_pulse_window = v.is_active && elapsed < v.pulse_window;
-    if (exceeded_period || !v.is_active) {
-      v.lastswitch = now;
-    } else if (within_pulse_window) {
-      digitalWrite(v.pin, HIGH);  // far-side inlet is open (non-normal)
-    } else {
-      digitalWrite(v.pin, LOW);  // pin-side inlet is open (normal)
-    }
+  if (exceeded_period || !v.enable) {
+    v.period_start = now;
+  } else if (within_pulse_window) {
+    digitalWrite(v.pin, HIGH);  // far-side inlet is open (non-normal)
+    Serial.print("[Pin ");
+    Serial.print(v.pin);
+    Serial.println(" HIGH]");
+  } else {
+    digitalWrite(v.pin, LOW);  // pin-side inlet is open (normal)
+    Serial.print("[Pin ");
+    Serial.print(v.pin);
+    Serial.println(" LOW]");
+  }
+}
+
+void updateActuator(Valve valves[], size_t n_valves) {
+  TimeMillis now = millis();
+
+  for (size_t idx = 0; idx < n_valves; idx++) {
+    Valve &v = valves[idx];
+    updateActuator(v, now);
   }
 }
 

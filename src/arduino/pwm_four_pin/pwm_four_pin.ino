@@ -1,12 +1,15 @@
 #include <string.h>
+#include "types.h"
 #include "valve.h"
 
-// DECLARE GLOBAL VARIABLES
-constexpr unsigned int BUFFER_LENGTH = 25;
-char data_received[BUFFER_LENGTH];  // Buffer to store incoming serial data
-unsigned int PIN_VALVES[4] = { 2, 3, 4, 5 };
 
-Valve valves[MAX_VALVES];
+// DECLARE GLOBAL VARIABLES
+
+constexpr size_t BUFFER_LENGTH = 25;
+char data_buffer[BUFFER_LENGTH];  // Buffer to store incoming serial data
+pin_size_t PIN_VALVES[4] = { 2, 3, 4, 5 };  // Pin id for each valve
+
+Valve valves[VALVEID_MAX];
 
 void setup() {
   // INITIALISE SERIAL
@@ -24,6 +27,6 @@ void setup() {
 }
 
 void loop() {
-  updateState(data_received, valves, N_VALVES, BUFFER_LENGTH);
+  updateState(data_buffer, valves, N_VALVES, BUFFER_LENGTH);
   updateActuator(valves, N_VALVES);
 }
