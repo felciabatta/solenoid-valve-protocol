@@ -22,6 +22,7 @@ struct Valve {
   TimeMillis period = PERIOD_DEFAULT;
   TimeMillis pulse_window;
   TimeMillis period_start;
+  PinStatus status = LOW;
 };
 
 void initValve(Valve valves[], ValveID id_valve, pin_size_t pin, DutyCycle duty_cycle, TimeMillis period) {
@@ -108,7 +109,7 @@ void updateBuffer(char data_buffer[], size_t buffer_length) {
 
 // parseCommand
 
-void updateState(Valve &v, OnOff enable, DutyCycle D, TimeMillis T) {
+void updateCommand(Valve &v, OnOff enable, DutyCycle D, TimeMillis T) {
   v.enable = enable;
   v.duty_cycle = D;
   v.period = T;
@@ -117,7 +118,7 @@ void updateState(Valve &v, OnOff enable, DutyCycle D, TimeMillis T) {
   printValveStatus(v);
 }
 
-void updateState(char data_buffer[], Valve valves[], size_t n_valves) {
+void updateCommand(char data_buffer[], Valve valves[], size_t n_valves) {
   // Look for "PWM" in buffer
   if (strncmp(data_buffer, "PWM", 3) != 0) { return; }
 
@@ -128,44 +129,69 @@ void updateState(char data_buffer[], Valve valves[], size_t n_valves) {
   DutyCycle duty_cycle = atoi(data_buffer + 9);
   TimeMillis period = atoi(data_buffer + 13);
 
-  updateState(valves[idx_valve], enable, duty_cycle, period);
+  updateCommand(valves[idx_valve], enable, duty_cycle, period);
 }
 
-void updateState(char data_buffer[], Valve valves[], size_t n_valves, size_t buffer_length){
+void updateCommand(char data_buffer[], Valve valves[], size_t n_valves, size_t buffer_length){
   if (Serial.available() <= 0) { return; }
   updateBuffer(data_buffer, buffer_length);
-  updateState(data_buffer, valves, n_valves);
+  updateCommand(data_buffer, valves, n_valves);
+}
+
+void resetStatus(Valve& v, TimeMillis now) {
+  v.period_start = now;
+  v.status = v.enable && v.duty_cycle > DUTY_CLOSED ? HIGH : LOW;
+}
+
+void resetStatus(Valve& v) {
+  resetStatus(v, millis());
+}
+
+void updateStatus(Valve& v, TimeMillis now) {
+  TimeMillis elapsed = now - v.period_start;
+
+  // force reset in unlikely event the program is out of sync
+  if (elapsed >= 2 * v.period || now < v.period_start) {
+    return resetStatus(v);
+  } else if (elapsed >= v.period) {
+    v.period_start += v.period;
+  }
+
+  // pulse window is front of duty cycle
+  // Note that `elasped % period in {0 ... period-1}`, so
+  // - `duty_cycle ==   0 =>` always LOW (since window == 0)
+  // - `duty_cycle == 100` => always HIGH (since window == period)
+  bool within_pulse_window = elapsed % v.period < v.pulse_window;
+  v.status = v.enable && within_pulse_window ? HIGH : LOW;
+}
+
+void updateStatus(Valve& v) {
+  updateStatus(v, millis());
+}
+
+void updateStatus(Valve valves[], size_t n_valves) {
+  for (size_t idx = 0; idx < n_valves; idx++) {
+    Valve &v = valves[idx];
+    updateStatus(v);
+  }
 }
 
 /*
   PWM Logic
 */
-void updateActuator(Valve &v, TimeMillis now) {
-  TimeMillis elapsed = now - v.period_start;
-  bool exceeded_period = v.enable && elapsed > v.period;
-  bool within_pulse_window = v.enable && elapsed < v.pulse_window;
-
-  if (exceeded_period || !v.enable) {
-    v.period_start = now;
-  } else if (within_pulse_window) {
-    digitalWrite(v.pin, HIGH);  // far-side inlet is open (non-normal)
-    Serial.print("[Pin ");
-    Serial.print(v.pin);
-    Serial.println(" HIGH]");
-  } else {
-    digitalWrite(v.pin, LOW);  // pin-side inlet is open (normal)
-    Serial.print("[Pin ");
-    Serial.print(v.pin);
-    Serial.println(" LOW]");
-  }
+void updateActuator(Valve &v) {
+  digitalWrite(v.pin, v.status);
+  // HIGH — far-side inlet is open (non-normal)
+  // LOW — pin-side inlet is open (normal)
+  Serial.print("[Pin ");
+  Serial.print(v.pin);
+  Serial.println(v.status == HIGH ? " HIGH]" : " LOW]");
 }
 
 void updateActuator(Valve valves[], size_t n_valves) {
-  TimeMillis now = millis();
-
   for (size_t idx = 0; idx < n_valves; idx++) {
     Valve &v = valves[idx];
-    updateActuator(v, now);
+    updateActuator(v);
   }
 }
 

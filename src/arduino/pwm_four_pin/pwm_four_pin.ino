@@ -27,6 +27,7 @@ void setup() {
 }
 
 void loop() {
-  updateState(data_buffer, valves, N_VALVES, BUFFER_LENGTH);
+  updateCommand(data_buffer, valves, N_VALVES, BUFFER_LENGTH);
+  updateStatus(valves, N_VALVES);
   updateActuator(valves, N_VALVES);
 }
