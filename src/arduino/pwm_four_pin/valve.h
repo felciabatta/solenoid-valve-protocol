@@ -26,7 +26,7 @@ struct Valve {
 };
 
 void initValve(Valve valves[], ValveID id_valve, pin_size_t pin, DutyCycle duty_cycle, TimeMillis period) {
-  if (id_valve < VALVEID_MIN || id_valve > VALVEID_MAX) return;
+  if (id_valve < VALVEID_MIN || id_valve > VALVEID_MAX) { return; }
 
   Valve &v = valves[id_valve - VALVEID_MIN];
 
@@ -43,7 +43,11 @@ void initValve(Valve valves[], ValveID id_valve, pin_size_t pin, DutyCycle duty_
   v.period_start = millis();
 }
 
-void initValves(Valve valves[], size_t n_valves, pin_size_t pins[], DutyCycle duty_cycle = DUTY_DEFAULT, TimeMillis period = PERIOD_DEFAULT) {
+void initValves(Valve valves[],
+  size_t n_valves,
+  pin_size_t pins[],
+  DutyCycle duty_cycle = DUTY_DEFAULT,
+  TimeMillis period = PERIOD_DEFAULT) {
   for (size_t idx = 0; idx < n_valves; idx++) {
     initValve(valves, idx, pins[idx], duty_cycle, period);
   }
@@ -132,22 +136,22 @@ void updateCommand(char data_buffer[], Valve valves[], size_t n_valves) {
   updateCommand(valves[idx_valve], enable, duty_cycle, period);
 }
 
-void updateCommand(char data_buffer[], Valve valves[], size_t n_valves, size_t buffer_length){
+void updateCommand(char data_buffer[], Valve valves[], size_t n_valves, size_t buffer_length) {
   if (Serial.available() <= 0) { return; }
   updateBuffer(data_buffer, buffer_length);
   updateCommand(data_buffer, valves, n_valves);
 }
 
-void resetStatus(Valve& v, TimeMillis now) {
+void resetStatus(Valve &v, TimeMillis now) {
   v.period_start = now;
   v.status = v.enable && v.duty_cycle > DUTY_CLOSED ? HIGH : LOW;
 }
 
-void resetStatus(Valve& v) {
-  resetStatus(v, millis());
-}
+void resetStatus(Valve &v) { resetStatus(v, millis()); }
 
-void updateStatus(Valve& v, TimeMillis now) {
+
+// PWM Logic
+void updateStatus(Valve &v, TimeMillis now) {
   TimeMillis elapsed = now - v.period_start;
 
   // force reset in unlikely event the program is out of sync
@@ -165,9 +169,7 @@ void updateStatus(Valve& v, TimeMillis now) {
   v.status = v.enable && within_pulse_window ? HIGH : LOW;
 }
 
-void updateStatus(Valve& v) {
-  updateStatus(v, millis());
-}
+void updateStatus(Valve &v) { updateStatus(v, millis()); }
 
 void updateStatus(Valve valves[], size_t n_valves) {
   for (size_t idx = 0; idx < n_valves; idx++) {
@@ -176,9 +178,6 @@ void updateStatus(Valve valves[], size_t n_valves) {
   }
 }
 
-/*
-  PWM Logic
-*/
 void updateActuator(Valve &v) {
   digitalWrite(v.pin, v.status);
   // HIGH — far-side inlet is open (non-normal)
