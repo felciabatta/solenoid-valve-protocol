@@ -17,6 +17,7 @@ constexpr char NULL_CHR = '\0';
 struct Valve {
   ValveID id;
   pin_size_t pin;
+  bool verbose = false;
   OnOff enable = false;
   DutyCycle duty_cycle = DUTY_DEFAULT;
   TimeMillis period = PERIOD_DEFAULT;
@@ -36,6 +37,7 @@ void initValve(Valve valves[], ValveID id_valve, pin_size_t pin, DutyCycle duty_
 
   v.id = id_valve;
   v.pin = pin;
+  v.verbose = false;
   v.enable = false;
   v.duty_cycle = duty_cycle;
   v.period = period;
@@ -49,7 +51,8 @@ void initValves(Valve valves[],
   DutyCycle duty_cycle = DUTY_DEFAULT,
   TimeMillis period = PERIOD_DEFAULT) {
   for (size_t idx = 0; idx < n_valves; idx++) {
-    initValve(valves, idx, pins[idx], duty_cycle, period);
+    ValveID id_valve = idx + 1;
+    initValve(valves, id_valve, pins[idx], duty_cycle, period);
   }
 }
 
@@ -71,7 +74,8 @@ int buffer2ValveIndex(Valve valves[], size_t n_valves, char data_buffer[]) {
   // EXTRACT ID AND IDX
   pin_size_t id_received = atoi(data_buffer + 3);
   int idx_valve = valveID2Index(valves, n_valves, id_received);
-
+  // Serial.print("IDX_VALVE is ");
+  // Serial.println(idx_valve);
   // VALIDATE ID
   if (idx_valve < 0) {
     Serial.print("Invalid ID = ");
@@ -87,7 +91,10 @@ void printValveStatus(Valve v) {
   Serial.print("[Setting Valve ");
   Serial.print(v.id);
   Serial.println("]");
-  Serial.println("—————————————————");
+  Serial.println("=================");
+
+  Serial.print("-   Verb: ");
+  Serial.println(v.verbose ? "true" : "false");
 
   Serial.print("-    PWM: ");
   Serial.print(v.duty_cycle);
@@ -99,7 +106,7 @@ void printValveStatus(Valve v) {
 
   Serial.print("- Active: ");
   Serial.println(v.enable ? "true" : "false");
-  Serial.println("—————————————————");
+  Serial.println("=================");
   Serial.println();
 }
 
@@ -113,7 +120,8 @@ void updateBuffer(char data_buffer[], size_t buffer_length) {
 
 // parseCommand
 
-void updateCommand(Valve &v, OnOff enable, DutyCycle D, TimeMillis T) {
+void updateCommand(Valve &v, bool verbose, OnOff enable, DutyCycle D, TimeMillis T) {
+  v.verbose = verbose;
   v.enable = enable;
   v.duty_cycle = D;
   v.period = T;
@@ -129,11 +137,12 @@ void updateCommand(char data_buffer[], Valve valves[], size_t n_valves) {
   int idx_valve = buffer2ValveIndex(valves, n_valves, data_buffer);
   if (idx_valve < 0) { return; }
 
+  bool verbose = atoi(data_buffer + 5);
   OnOff enable = atoi(data_buffer + 7);
   DutyCycle duty_cycle = atoi(data_buffer + 9);
   TimeMillis period = atoi(data_buffer + 13);
 
-  updateCommand(valves[idx_valve], enable, duty_cycle, period);
+  updateCommand(valves[idx_valve], verbose, enable, duty_cycle, period);
 }
 
 void updateCommand(char data_buffer[], Valve valves[], size_t n_valves, size_t buffer_length) {
@@ -182,9 +191,11 @@ void updateActuator(Valve &v) {
   digitalWrite(v.pin, v.status);
   // HIGH — far-side inlet is open (non-normal)
   // LOW — pin-side inlet is open (normal)
-  Serial.print("[Pin ");
-  Serial.print(v.pin);
-  Serial.println(v.status == HIGH ? " HIGH]" : " LOW]");
+  if (v.verbose && v.enable) {
+    Serial.print("[Pin ");
+    Serial.print(v.pin);
+    Serial.println(v.status == HIGH ? " HIGH]" : " LOW]");
+  }
 }
 
 void updateActuator(Valve valves[], size_t n_valves) {
